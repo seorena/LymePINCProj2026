@@ -59,10 +59,15 @@ Define it here:
 
 #CRS WGS 84 UTM Zone 13
 
-#lon_min <- Minimum longitude for our study area
-#lon_max <- Maximum longitude for our study area
-#lat_min <- Minimum latitude for our study area
-#lat_max <- Maximum latitude for our study area
+#top left 38.640698°N 122.877905°W
+#top right 38.662410°N 121.742323°W
+#bottom left 37.077243°N 122.846428°W
+#bottom right 37.265823°N 121.891474°W
+
+lon_min <- -122.89
+lon_max <- -121.74
+lat_min <- 37.2658
+lat_max <- 38.6624
 ```
 
 Study area is defined as:
@@ -76,8 +81,8 @@ We collected our response variable data from March 2026-June 2026. However, the 
 
 ```{r}
 # Set the date range
-start <- "2026-03-01"  # yr-mo-d"
-end <- "2026-06-25"
+start <- "2024-03-01"  # yr-mo-d"
+end <- "2026-06-18"
 ```
 
 What datatype did we use to define objects "start" and "end"
@@ -88,6 +93,8 @@ If yes, keep the dates as they are. If no, add a chunk to redefine the start and
 
 ```{r}
 #Use this chunk to determine what datatype "start" and "end" are.
+
+class(start)
 ```
 
 Answer: 
@@ -131,21 +138,26 @@ Here we will learn how to download MODIS data and format it for analysis. *MODIS
 Specify the MODIS product we will be working with. What does the MODIS project below 
 ```{r}
 modis_product <- "MOD11A2"
+modis_version <- "061"
 ```
 
 Create a path to the folder to save the files in
 
 ```{r}
-data.dir.LST <- "path to the folder you want to save the files in"
+
+data.dir.LST <- "./data"
 ```
 
 #### Extract data from MODIS ####
 
 In order to access MODIS data, we will need to sign in to earth data. Head to [NASA Earthdata Login](https://urs.earthdata.nasa.gov/users/new) and set up an Earth Data account.
 ```{r}
-LST <- getNASA(product = modis_product, start_date = start, end_date = end,
-                aoi = area, download = TRUE, path = data.dir.LST,
-                username = "**********", password = "**********") #earth data login info
+
+auth <- earthdataLogin("schang26", password="3arthDATAlogin!", verbose=TRUE) #earth data login info
+
+getProducts(modis_product)
+LST_url <- luna::getNASA(product = "MOD11A2", version="061", start_date = start, end_date = end,
+                aoi = area, download = FALSE, auth=auth, server = "LPDAAC_ECS", limit =100000, path = data.dir.LST) 
 ```
 
 
