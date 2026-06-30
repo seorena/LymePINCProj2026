@@ -23,9 +23,6 @@ For this study, we started with a question from which we developed a conceptual 
 
 Now we will begin attaching data to our question to make predictions. We will be building an *empirical model*. Empirical models allow us as researchers to identify relationships between variables using real-world data. As such, it is important for us to identify relevant parameters for our models based on our study system and hypothesis as well as reliable methods/sources by which we can collect/extract that data.
 
-###Downloading MODIS Data and Preparing it for Analysis
-
-Here we will learn how to download MODIS data and format it for analysis. *MODIS* or Moderate Resolution Imaging Spectroradiometer is an instrument aboard NASA's Terra and Aqua satellites that collects data in 36 spectral channels on a daily basis. This data can then be processed to be used to monitor and assess vegetatitve health, changes in land cover and use, and more. The data can be downloaded at 250m, 500m, or 1000m resolution.
 
 ####Install packages
 Install packages, if needed. Edit this chunk to include previously uninstalled packages and remove the # symbol.
@@ -103,10 +100,21 @@ Many commonly used environmental datasets have R packages that can be downloaded
 
 List of R packages to explore:
 
+sen2r
+rstac
+terra
+rgee
+osmdata
+tidycensus
+rgbif
+FedData
+rstac
+prism
+FedData
 
+Next to each item listed above, identify what type(s) of data they host.
 
 **Your Answer-Key Predictor variables:**
-
 
 
 ```{r}
@@ -114,11 +122,15 @@ List of R packages to explore:
 ```
 
 
+###Example: Downloading MODIS Data and Preparing it for Analysis
+
+Here we will learn how to download MODIS data and format it for analysis. *MODIS* or Moderate Resolution Imaging Spectroradiometer is an instrument aboard NASA's Terra and Aqua satellites that collects data in 36 spectral channels on a daily basis. This data can then be processed to be used to monitor and assess vegetatitve health, changes in land cover and use, and more. The data can be downloaded at 250m, 500m, or 1000m resolution.
+
 #### Land Surface Temperature via MODIS ####
 
 Specify the MODIS product we will be working with. What does the MODIS project below 
 ```{r}
-modis_product <- "MOD11C3"
+modis_product <- "MOD11A2"
 ```
 
 Create a path to the folder to save the files in
@@ -129,26 +141,13 @@ data.dir.LST <- "path to the folder you want to save the files in"
 
 #### Extract data from MODIS ####
 
-In order to access MODIS data, we will need to sign in to earth data. Head to [link name](insertlink) and set up an Earth Data account.
+In order to access MODIS data, we will need to sign in to earth data. Head to [NASA Earthdata Login](https://urs.earthdata.nasa.gov/users/new) and set up an Earth Data account.
 ```{r}
-LST <- getModis(product = modis_product, start_date = start, end_date = end,
+LST <- getNASA(product = modis_product, start_date = start, end_date = end,
                 aoi = area, download = TRUE, path = data.dir.LST,
                 username = "**********", password = "**********") #earth data login info
 ```
 
-
-#### rgdal ###
-
-Call the package rgdal if you have not already. Use ?rgdal to find out what the package is used for and what gdal_translate does.
-
-```{r}
-
-#Call rgdal and use its documentation to learn more.
-
-```
-
-
-Answer here:
 
 ```{r}
 gdalUtilities::gdal_translate
@@ -160,20 +159,19 @@ Convert your MODIS download to a .tif
 getwd() #make sure your working directory is in the path where your files are going to be saved. If it isn't, set your working directory to that path.
 setwd("path to where your files are saved")
 
-files_LST <- dir(pattern = "MOD11C3") #or whatever part of the file name is identifiable
+files_LST <- dir(pattern = "MOD11A1") #or whatever part of the file name is identifiable
 sds <- sds(files_LST[1]) #create a spatrasterdataset
 ```
 
 Find the subdataset you need within the modis product by printing the names of the sub-dataset using the print() on sds
 ```{r}
 # Print the names of the sub-datasets to find the one you need. 
-#print sds here
+print(sds)
 
 #Call the sds you need by choosing the index number
 dataset_to_convert <- sds[[1]]
 
 #Convert the data set to a raster format in an object called "raster_data" using the raster function.
-
 ```
 
 Name your output tif file
