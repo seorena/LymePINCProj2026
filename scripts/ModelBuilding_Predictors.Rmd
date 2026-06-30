@@ -228,13 +228,13 @@ writeRaster(m, filename = output_tiff, format = "GTiff", overwrite=TRUE)
 Call the sf package if you haven't already using library()
 ```{r}
 # Load the vector file as an sf object
-gb_sf <- st_read("path to your shapefile .shp")
+ba_sf <- st_read("path to your shapefile .shp")
 ```
 
 Use the chunk below to check what coordinate reference system your shapefile uses. You need to make sure you are using a consistent CRS.
 ```{r}
 # Check the current CRS
-print(st_crs(gb_sf)) #make sure it's the same as the other rasters you'll be working with
+print(st_crs(ba_sf)) #make sure it's the same as the other rasters you'll be working with
 ```
 
 If your shapefile is in a different CRS, transform it to your target CRS.
@@ -243,22 +243,22 @@ If your shapefile is in a different CRS, transform it to your target CRS.
 target_crs <- st_crs("EPSG:4326")  # For WGS 84
 
 # If needed, transform the vector's CRS
-gb_transformed_sf <- st_transform(gb_sf, target_crs)
+ba_transformed_sf <- st_transform(ba_sf, target_crs)
 ```
 
 Convert to a terra object if needed. Only if needed.
 ```{r}
-gb_transformed <- vect(gb_transformed_sf)
+ba_transformed <- vect(ba_transformed_sf)
 ```
 
 Write the SpatVector to a shapefile.
 ```{r}
-writeVector(gb_transformed, filename = "gb.shp", filetype = "ESRI Shapefile")
+writeVector(ba_transformed, filename = "gb.shp", filetype = "ESRI Shapefile")
 ```
 
 Read it back in.
 ```{r}
-gb <- vect("path to your formatted shapefile .shp")
+ba <- vect("path to your formatted shapefile .shp")
 ```
 
 In this chunk, load raster data for our predictor variables using terra and format to make keep the rasters consistent.
@@ -276,9 +276,9 @@ rainfall_raster <- resample(rainfall_raster, temperature_raster)
 Crop the raster layers to the extent of the shapefile (shape and size).
 ```{r}
 # crop the rasters so that they are all the same shape and size
-temperature_raster_crop <- crop(temperature_raster, gb)
-NDVI_raster_crop <- crop(NDVI_raster, gb)
-ET_raster_crop <- crop(ET_reprojected, gb)
-rainfall_raster_crop <- crop(rainfall_raster, gb)
+temperature_raster_crop <- crop(temperature_raster, ba)
+NDVI_raster_crop <- crop(NDVI_raster, ba)
+ET_raster_crop <- crop(ET_reprojected, ba)
+rainfall_raster_crop <- crop(rainfall_raster, ba)
 ```
 
