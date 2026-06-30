@@ -1,0 +1,286 @@
+---
+title: "ModelBuilding_Predictors"
+author: "Serena Chang"
+date: "2026-06-30"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Getting started with our models
+
+*What is a model?*
+
+According to [Jackson et al., 2000](https://doi.org/10.1641/0006-3568(2000)050[0694:AITTPO]2.0.CO;2), a *model* is a representation of a thing, idea or a condition. In my opinion this definition is terribly vague, but that doesn't make it less true. A model can be simple (think a picture or a statement) or complex (think advanced mathematical equations). *Modeling* is the process by which a hypothesis evolves from an idea into a conceptual model into a quantitative model.
+
+An idea -> data collection -> model development -> new understanding -> revised hypothesis -> more data -> more models -> and on and on and on...
+
+Models should be detailed enough to encompass the ecological structure and processes of interest but simple enough to be understood and not overfit.
+
+For this study, we started with a question from which we developed a conceptual model based on our understanding of our model system: Lyme disease in the western United States. 
+
+Now we will begin attaching data to our question to make predictions. We will be building an *empirical model*. Empirical models allow us as researchers to identify relationships between variables using real-world data. As such, it is important for us to identify relevant parameters for our models based on our study system and hypothesis as well as reliable methods/sources by which we can collect/extract that data.
+
+###Downloading MODIS Data and Preparing it for Analysis
+
+Here we will learn how to download MODIS data and format it for analysis. *MODIS* or Moderate Resolution Imaging Spectroradiometer is an instrument aboard NASA's Terra and Aqua satellites that collects data in 36 spectral channels on a daily basis. This data can then be processed to be used to monitor and assess vegetatitve health, changes in land cover and use, and more. The data can be downloaded at 250m, 500m, or 1000m resolution.
+
+####Install packages
+Install packages, if needed. Edit this chunk to include previously uninstalled packages and remove the # symbol.
+```{r cars}
+#install.packages(c("readxl", "terra", "sf", "dplyr", "ggplot2","raster","gdalUtilities"))
+```
+
+The chunk above is used to install packages hosted on CRAN directly. For packages that need to be sourced directly from GitHub repository, install them with the code as follows:
+```{r}
+remotes::install_github("rspatial/luna")
+```
+
+####Load packages
+```{r pressure, echo=FALSE}
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(terra)
+library(sf)
+library(raster)
+library(luna)
+library(gdalUtilities)
+```
+
+#####Defining our geographic area
+
+Our study takes place in the San Francisco Bay Area. The northern most study area is in Sonoma County at Pepperwood Preserve, the eastern most study area in Contra Costa County as Black Diamond Mines Regional Preserve, the southern most study area in Santa Clara County at Uvas Canyon Regional Park. Based on these points and the Pacific Coastline as the western bound, define the geographic area of our study. The area should have a slight buffer around the furthest extents of our study sites. 
+
+Do some research to identify an appropriate bounding box for our study area.
+
+Define it here:
+```{r}
+# Define the geographic area (bounding box) by defining the objects below (remove the "#" at the front and replace "Min/Max long/lat for our study area" with the associated coordinates.)
+
+#CRS WGS 84 UTM Zone 13
+
+#lon_min <- Minimum longitude for our study area
+#lon_max <- Maximum longitude for our study area
+#lat_min <- Minimum latitude for our study area
+#lat_max <- Maximum latitude for our study area
+```
+
+Study area is defined as:
+```{r}
+area <- c(lat_min, lat_max, lon_min, lon_max)
+```
+
+####Set the temporal extent of our study
+
+We collected our response variable data from March 2026-June 2026. However, the temporal bounds of our predictor variable data might not be available over this time frame. If this is the case, ...
+
+```{r}
+# Set the date range
+start <- "2026-03-01"  # yr-mo-d"
+end <- "2026-06-25"
+```
+
+What datatype did we use to define objects "start" and "end"
+
+If we consider our predictor data and the life cycle of ticks and the types of interactions that might influence the density of nymphs emerging this spring, do the start and end dates above make sense for our analysis?
+
+If yes, keep the dates as they are. If no, add a chunk to redefine the start and end dates of our temporal extent.
+
+```{r}
+#Use this chunk to determine what datatype "start" and "end" are.
+```
+
+Answer: 
+
+#########
+
+### Accessing environmental data ###
+
+Many commonly used environmental datasets have R packages that can be downloaded and imported directly into our workflow in R, effectively bypassing the need to manually download each file. In the space below, list some key predictor variables you think we should consider, and explore the following R packages to decides which packages or layers would be useful to include.
+
+List of R packages to explore:
+
+
+
+**Your Answer-Key Predictor variables:**
+
+
+
+```{r}
+#Install and load the packages you deemed useful.
+```
+
+
+#### Land Surface Temperature via MODIS ####
+
+Specify the MODIS product we will be working with. What does the MODIS project below 
+```{r}
+modis_product <- "MOD11C3"
+```
+
+Create a path to the folder to save the files in
+
+```{r}
+data.dir.LST <- "path to the folder you want to save the files in"
+```
+
+#### Extract data from MODIS ####
+
+In order to access MODIS data, we will need to sign in to earth data. Head to [link name](insertlink) and set up an Earth Data account.
+```{r}
+LST <- getModis(product = modis_product, start_date = start, end_date = end,
+                aoi = area, download = TRUE, path = data.dir.LST,
+                username = "**********", password = "**********") #earth data login info
+```
+
+
+#### rgdal ###
+
+Call the package rgdal if you have not already. Use ?rgdal to find out what the package is used for and what gdal_translate does.
+
+```{r}
+
+#Call rgdal and use its documentation to learn more.
+
+```
+
+
+Answer here:
+
+```{r}
+gdalUtilities::gdal_translate
+```
+
+Convert your MODIS download to a .tif
+```{r}
+#convert to .tif
+getwd() #make sure your working directory is in the path where your files are going to be saved. If it isn't, set your working directory to that path.
+setwd("path to where your files are saved")
+
+files_LST <- dir(pattern = "MOD11C3") #or whatever part of the file name is identifiable
+sds <- sds(files_LST[1]) #create a spatrasterdataset
+```
+
+Find the subdataset you need within the modis product by printing the names of the sub-dataset using the print() on sds
+```{r}
+# Print the names of the sub-datasets to find the one you need. 
+#print sds here
+
+#Call the sds you need by choosing the index number
+dataset_to_convert <- sds[[1]]
+
+#Convert the data set to a raster format in an object called "raster_data" using the raster function.
+
+```
+
+Name your output tif file
+```{r}
+#output tif name
+output_tiff <- "new file name .tif" 
+```
+
+Save your raster object as a tif file
+```{r}
+writeRaster(raster_data, filename = output_tiff, format = "GTiff", overwrite = TRUE)
+```
+
+#########
+
+### stitch/mosaic tiles from MODIS ###
+
+Now we will be stitching files together
+
+```{r}
+files_ET <- dir(pattern = "MOD16A2") #identify the file names
+```
+
+For example, we will stitch together these four files.
+```{r}
+#in this case I have 4 files which I want to mosaic together (files_ET is a vector with 4 filenames in)
+
+#create rasters
+w <- rast(files_ET[1])
+x <- rast(files_ET[2])
+y <- rast(files_ET[3])
+z <- rast(files_ET[4])
+```
+
+convert to a spatial raster collection using the function sprc
+```{r}
+s <- sprc(w, x, y, z) #Create a SpatRasterCollection
+m <- merge(s) #mosaic them together
+m <- raster(m) #make into raster
+```
+
+Define your output .tif object.
+
+Use a different object name than that listed above, so edit the object and the call on this chunk!
+```{r}
+output_tiff <- "new file name .tif"
+```
+
+Input your new output object as the filename argument.
+```{r}
+writeRaster(m, filename = output_tiff, format = "GTiff", overwrite=TRUE)
+```
+
+Call the sf package if you haven't already using library()
+```{r}
+# Load the vector file as an sf object
+gb_sf <- st_read("path to your shapefile .shp")
+```
+
+Use the chunk below to check what coordinate reference system your shapefile uses. You need to make sure you are using a consistent CRS.
+```{r}
+# Check the current CRS
+print(st_crs(gb_sf)) #make sure it's the same as the other rasters you'll be working with
+```
+
+If your shapefile is in a different CRS, transform it to your target CRS.
+```{r}
+# If needed, define a target CRS (adjust as needed)
+target_crs <- st_crs("EPSG:4326")  # For WGS 84
+
+# If needed, transform the vector's CRS
+gb_transformed_sf <- st_transform(gb_sf, target_crs)
+```
+
+Convert to a terra object if needed. Only if needed.
+```{r}
+gb_transformed <- vect(gb_transformed_sf)
+```
+
+Write the SpatVector to a shapefile.
+```{r}
+writeVector(gb_transformed, filename = "gb.shp", filetype = "ESRI Shapefile")
+```
+
+Read it back in.
+```{r}
+gb <- vect("path to your formatted shapefile .shp")
+```
+
+In this chunk, load raster data for our predictor variables using terra and format to make keep the rasters consistent.
+```{r}
+# Load raster data using terra
+temperature_raster <- rast("temperature raster .tif")
+NDVI_raster <- rast("NDVI raster .tif")
+NDVI_raster <- resample(NDVI_raster, temperature_raster) #format to make sure it's like the first raster
+ET_raster <- rast("ET raster.tif")
+ET_raster <- resample(ET_raster, temperature_raster)
+rainfall_raster <- rast("rainfall raster.tif")
+rainfall_raster <- resample(rainfall_raster, temperature_raster)
+```
+
+Crop the raster layers to the extent of the shapefile (shape and size).
+```{r}
+# crop the rasters so that they are all the same shape and size
+temperature_raster_crop <- crop(temperature_raster, gb)
+NDVI_raster_crop <- crop(NDVI_raster, gb)
+ET_raster_crop <- crop(ET_reprojected, gb)
+rainfall_raster_crop <- crop(rainfall_raster, gb)
+```
+
