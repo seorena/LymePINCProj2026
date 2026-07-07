@@ -27,258 +27,422 @@ Now we will begin attaching data to our question to make predictions. We will be
 ####Install packages
 Install packages, if needed. Edit this chunk to include previously uninstalled packages and remove the # symbol.
 ```{r cars}
-#install.packages(c("readxl", "terra", "sf", "dplyr", "ggplot2","raster","gdalUtilities"))
+#install.packages(c( "tidyverse", "janitor", "lubridate", "sf", "terra", "geodata", "elevatr", "glmmTMB" ))
 ```
 
 The chunk above is used to install packages hosted on CRAN directly. For packages that need to be sourced directly from GitHub repository, install them with the code as follows:
 ```{r}
-remotes::install_github("rspatial/luna")
+#remotes::install_github("rspatial/luna")
 ```
 
 ####Load packages
 ```{r pressure, echo=FALSE}
-library(readxl)
-library(dplyr)
-library(ggplot2)
-library(terra)
+library(tidyverse)
+library(janitor)
+library(lubridate)
 library(sf)
-library(raster)
-library(luna)
-library(gdalUtilities)
+library(terra)
+library(geodata)
+library(elevatr)
+library(glmmTMB)
 ```
 
 #####Defining our geographic area
 
 Our study takes place in the San Francisco Bay Area. The northern most study area is in Sonoma County at Pepperwood Preserve, the eastern most study area in Contra Costa County as Black Diamond Mines Regional Preserve, the southern most study area in Santa Clara County at Uvas Canyon Regional Park. Based on these points and the Pacific Coastline as the western bound, define the geographic area of our study. The area should have a slight buffer around the furthest extents of our study sites. 
 
-Do some research to identify an appropriate bounding box for our study area.
+On Tuesday, you did research to identify an appropriate bounding box for our study area.
 
-Define it here:
+Defined here:
 ```{r}
 # Define the geographic area (bounding box) by defining the objects below (remove the "#" at the front and replace "Min/Max long/lat for our study area" with the associated coordinates.)
 
 #CRS WGS 84 UTM Zone 13
 
-#lon_min <- Minimum longitude for our study area
-#lon_max <- Maximum longitude for our study area
-#lat_min <- Minimum latitude for our study area
-#lat_max <- Maximum latitude for our study area
+lon_min <- -122.89
+lon_max <- -121.74
+lat_min <- 37.2658
+lat_max <- 38.6624
 ```
 
-Study area is defined as:
+Study area based on above definition
 ```{r}
 area <- c(lat_min, lat_max, lon_min, lon_max)
 ```
 
-####Set the temporal extent of our study
+However, we can also define our study area by manipulating our response datasets and creating a buffer around the study sites in R, which we will do together now. 
 
-We collected our response variable data from March 2026-June 2026. However, the temporal bounds of our predictor variable data might not be available over this time frame. If this is the case, ...
+First, we will want to take a look at some of our response datasets and get them cleaned up so we can work with them effectively.
 
-```{r}
-# Set the date range
-start <- "2026-03-01"  # yr-mo-d"
-end <- "2026-06-25"
-```
 
-What datatype did we use to define objects "start" and "end"
+### Import and clean site-level and visit-level ecological response data ###
 
-If we consider our predictor data and the life cycle of ticks and the types of interactions that might influence the density of nymphs emerging this spring, do the start and end dates above make sense for our analysis?
+As with all scripts, the first thing we need to do to setup our workspace is install and load all relevant packages. All relevant packages were included in the above chunks, so if you have not loaded them into your library, go ahead and do that now. 
 
-If yes, keep the dates as they are. If no, add a chunk to redefine the start and end dates of our temporal extent.
+Once you've loaded all relevant packages, you will want to import and take a look at the response data we will be working with today. Associated csv files are available in our shared drive: [Sites](https://drive.google.com/file/d/1sY2M3p13s2IY3jzU-Ctou5wNXWAq_hzK/view?usp=drive_link) & [Visits](https://drive.google.com/file/d/1Wg3GkkfqWnNzLsNGCW9DZLAG2xE1Ysze/view?usp=drive_link).
 
 ```{r}
-#Use this chunk to determine what datatype "start" and "end" are.
+sites_raw <- read_csv("data/Puma_data - Sites_Puma.csv")
+visits_raw <- read_csv("data/Puma_data - Visits_Puma_Counts.csv")
 ```
 
-Answer: 
-
-#########
-
-### Accessing environmental data ###
-
-Many commonly used environmental datasets have R packages that can be downloaded and imported directly into our workflow in R, effectively bypassing the need to manually download each file. In the space below, list some key predictor variables you think we should consider, and explore the following R packages to decides which packages or layers would be useful to include.
-
-List of R packages to explore:
-
-sen2r
-rstac
-terra
-rgee
-osmdata
-tidycensus
-rgbif
-FedData
-rstac
-prism
-FedData
-
-Next to each item listed above, identify what type(s) of data they host.
-
-**Your Answer-Key Predictor variables:**
-
+##### Inspect the data #####
 
 ```{r}
-#Install and load the packages you deemed useful.
+glimpse(sites_raw)
+glimpse(visits_raw)
+
+summary(sites_raw)
+summary(visits_raw)
 ```
 
+**How are the site-level and visit-level tables different? Why might be need both?**
+The site-level table keeps track of information associated with the study site that doesn't change with each visit. The visit-level table includes information about our response variable collections at each site on different dates.
 
-###Example: Downloading MODIS Data and Preparing it for Analysis
+### Data Cleaning ###
+Data cleaning allows us to perform checks on our data. Is the dataset accurate and usable for analysis? Raw data often contains errors, including but not limited to missing values, incorrect formats, duplicates, or inconsistent entries. These errors can give us a hard time down the line.
 
-Here we will learn how to download MODIS data and format it for analysis. *MODIS* or Moderate Resolution Imaging Spectroradiometer is an instrument aboard NASA's Terra and Aqua satellites that collects data in 36 spectral channels on a daily basis. This data can then be processed to be used to monitor and assess vegetatitve health, changes in land cover and use, and more. The data can be downloaded at 250m, 500m, or 1000m resolution.
-
-#### Land Surface Temperature via MODIS ####
-
-Specify the MODIS product we will be working with. What does the MODIS project below 
-```{r}
-modis_product <- "MOD11A2"
-```
-
-Create a path to the folder to save the files in
+Using the mutate and filter function, clean up the site-level and visit-level datasets to prepare for model building. Consider what each row and column represents to think about what their uses might be and what datatype will be best for that use. Drop any empty rows and think about how you might handle missing data. Why might be filter out observations with missing data is some rows versus others?
 
 ```{r}
-data.dir.LST <- "path to the folder you want to save the files in"
+sites_clean <- sites_raw %>%
+  mutate(
+    site_id = as.character(site_id),
+    lon = as.numeric(longitude),
+    lat = as.numeric(latitude),
+    puma_factor = as.factor(puma_factor) # we want them as factors so that they are actual levels
+    )%>%
+  filter(
+!is.na(site_id),
+!is.na(lon),
+!is.na(lat),
+between(lon, -180, 180),
+between(lat, -90, 90)
+)%>%
+distinct(site_id, .keep_all=TRUE)
+
+
+visits_clean <- visits_raw %>%
+  mutate(
+    site_id = as.character(site_id),
+    site = as.character(site),
+    drag_num = as.integer(drag_num),
+    collection_date = mdy(collection_date),
+    puma_factor = as.factor(puma_factor),
+    observer_count = as.integer(observer_count),
+    area_surveyed_m2 = as.numeric(area_sureveyed_m2),
+    count_IPAC_L = as.integer(count_IPAC_L),
+    count_IPAC_N = as.integer(count_IPAC_N),
+    count_IPAC_A_F = as.integer(count_IPAC_A_F),
+    count_IPAC_A_M = as.integer(count_IPAC_A_M),
+    don = count_IPAC_N / area_sureveyed_m2, # this is how to calculate density of nymphs
+    dol = count_IPAC_L / area_sureveyed_m2,
+    doaf = count_IPAC_A_F / area_sureveyed_m2,
+    doam = count_IPAC_A_M / area_sureveyed_m2
+  ) %>%
+  filter(
+    !is.na(site_id)
+  )
+
+#for visits_clean also add a column for density of nymphs called "don." Which count column should you use?
+
+glimpse(sites_clean)
+glimpse(visits_clean)
 ```
 
-#### Extract data from MODIS ####
-
-In order to access MODIS data, we will need to sign in to earth data. Head to [NASA Earthdata Login](https://urs.earthdata.nasa.gov/users/new) and set up an Earth Data account.
-```{r}
-LST <- getNASA(product = modis_product, start_date = start, end_date = end,
-                aoi = area, download = TRUE, path = data.dir.LST,
-                username = "**********", password = "**********") #earth data login info
-```
-
-
-```{r}
-gdalUtilities::gdal_translate
-```
-
-Convert your MODIS download to a .tif
-```{r}
-#convert to .tif
-getwd() #make sure your working directory is in the path where your files are going to be saved. If it isn't, set your working directory to that path.
-setwd("path to where your files are saved")
-
-files_LST <- dir(pattern = "MOD11A1") #or whatever part of the file name is identifiable
-sds <- sds(files_LST[1]) #create a spatrasterdataset
-```
-
-Find the subdataset you need within the modis product by printing the names of the sub-dataset using the print() on sds
-```{r}
-# Print the names of the sub-datasets to find the one you need. 
-print(sds)
-
-#Call the sds you need by choosing the index number
-dataset_to_convert <- sds[[1]]
-
-#Convert the data set to a raster format in an object called "raster_data" using the raster function.
-```
-
-Name your output tif file
-```{r}
-#output tif name
-output_tiff <- "new file name .tif" 
-```
-
-Save your raster object as a tif file
-```{r}
-writeRaster(raster_data, filename = output_tiff, format = "GTiff", overwrite = TRUE)
-```
-
-#########
-
-### stitch/mosaic tiles from MODIS ###
-
-Now we will be stitching files together
+After cleaning your datasets, make sure that each visit has a corresponding site. 
 
 ```{r}
-files_ET <- dir(pattern = "MOD16A2") #identify the file names
+anti_join(visits_clean, sites_clean, by="site_id")
 ```
+If this line of code returns zero rows, your site IDs match!
 
-For example, we will stitch together these four files.
+
+Using the chunk below, create a table showing how many visits each site has and answer the following question: Do all sites have the same number of visits? If not, which sites are missing visits?
+
+No, not all sites have the same number of visits. RCDO, SAN, and UVA are missing visits.
+
 ```{r}
-#in this case I have 4 files which I want to mosaic together (files_ET is a vector with 4 filenames in)
-
-#create rasters
-w <- rast(files_ET[1])
-x <- rast(files_ET[2])
-y <- rast(files_ET[3])
-z <- rast(files_ET[4])
+visits_clean %>%
+  count(site_id)
 ```
 
-convert to a spatial raster collection using the function sprc
+
+### Site-Level Density Data ###
+
+Summarize the two visits to consider site-level density (we might consider each drag effort at each site as independent observations, but we need to understand it summarized to know what's best for our analysis).
 ```{r}
-s <- sprc(w, x, y, z) #Create a SpatRasterCollection
-m <- merge(s) #mosaic them together
-m <- raster(m) #make into raster
+
+site_don <- visits_clean %>%
+  group_by(site_id)%>%
+  summarise(
+    n_visits = n(),
+    total_nymphs = sum(count_IPAC_N, na.rm = TRUE),
+    total_area_surveyed_m2 = sum(area_sureveyed_m2, na.rm=TRUE),
+    pooled_density = total_nymphs / total_area_surveyed_m2,
+    density_100m2 = pooled_density * 100,
+    mean_visit_density = mean(don, na.rm=TRUE),
+    mean_visit_density_100m2 = mean_visit_density * 100,
+    sd_visit_density = sd(don, na.rm=TRUE),
+    .groups = "drop"
+  )
+
+glimpse(site_don)
+summary(site_don)
 ```
 
-Define your output .tif object.
-
-Use a different object name than that listed above, so edit the object and the call on this chunk!
+Use a left_join to incorporate site coordinates into our density data and inspect the result.
 ```{r}
-output_tiff <- "new file name .tif"
+site_don <- site_don %>%
+  left_join(sites_clean, by="site_id")
+
+glimpse(site_don)
 ```
 
-Input your new output object as the filename argument.
+Do you notice a difference between pooled_density and mean_visit_density? When are they different?
+
+Yes, there is a difference between pooled_density and mean_visit_density. pooled_density and mean_visit_density are different when the total area surveyed are different.
+
+### Converting our Sites into Spatial Objects ###
+
+In the chunk below, convert the sites to an sf object named "sites_sf" using st_as_sf().
+
 ```{r}
-writeRaster(m, filename = output_tiff, format = "GTiff", overwrite=TRUE)
+
+sites_sf <- st_as_sf(site_don, #update with your df 
+                     coords= c("lon", "lat"), #vector for your coordinates
+                     crs = 4326, remove=FALSE)
+
 ```
 
-Call the sf package if you haven't already using library()
+EPSG:4326 is a spherical model of earth represented in decimal degrees. We are going to want to convert our spatial object into a coordinate system measured in meters for our analysis. We will be using EPSG:3857.
+
+**Why is it useful to use a projected coordinate system in meters rather than latitude/longitude?**
+
+It is easier to work with that system because it is more consistent and makes it easier to do our calculations.
+
+Define an object as "crs_model" with the value "EPSG:3310" and reproject sites_sf using st_transform()
 ```{r}
-# Load the vector file as an sf object
-ba_sf <- st_read("path to your shapefile .shp")
+crs_model <- "EPSG:3310" # crs should be chosen in meters based on data
+
+sites_proj <- st_transform(sites_sf, crs = crs_model)
+
 ```
 
-Use the chunk below to check what coordinate reference system your shapefile uses. You need to make sure you are using a consistent CRS.
+
+With our study sites transformed, we will now create a a buffer around our sites to act as our study area or aoi (area of interest).
+
 ```{r}
-# Check the current CRS
-print(st_crs(ba_sf)) #make sure it's the same as the other rasters you'll be working with
+aoi <- sites_proj %>%
+  st_union()%>%
+  st_buffer(50000)%>%
+  st_as_sf()
 ```
 
-If your shapefile is in a different CRS, transform it to your target CRS.
+This creates a 50 km buffer around our sites. Does this seem like an appropriate buffer for our study? If not, adjust accordingly.
+
+
+### Loading Predictors using APIs ###
+
+We will work on loading environmental predictors, focusing on climate, elevation, and slope.
+
+#### Preditor 1: Climate using WorldClim ####
+
+WorldClim is a database of global weather and climate data. They have datasets that look at annual trends of bioclimatic variables. You can find the codes for these variables [here](https://www.worldclim.org/data/bioclim.html)
+
+When we load these datasets, we are going to save them in a new folder within the data foloder of our project.
+
 ```{r}
-# If needed, define a target CRS (adjust as needed)
-target_crs <- st_crs("EPSG:4326")  # For WGS 84
-
-# If needed, transform the vector's CRS
-ba_transformed_sf <- st_transform(ba_sf, target_crs)
+dir.create("data/predictors/worldclim", recursive=TRUE, showWarnings = FALSE)
 ```
 
-Convert to a terra object if needed. Only if needed.
+Bioclimatic data is available at multiple resolutions through WorldClim. We are going to attempt to load the data at 2.5 resolution, but if time and bandwidth become a limiting factor we can load it at 10 resolution.
+
 ```{r}
-ba_transformed <- vect(ba_transformed_sf)
+bio <- geodata::worldclim_global(
+  var="bio",
+  res = 2.5,
+  path = "data/predictors/worldclim"
+)
 ```
 
-Write the SpatVector to a shapefile.
+We are going to keep four climate predictors.
+
 ```{r}
-writeVector(ba_transformed, filename = "gb.shp", filetype = "ESRI Shapefile")
+bio_worlclim <- bio[[c(1, 2, 4, 12)]]
+names(bio_worlclim) <- c("annual_mean_temp", "mean_diurnal_range", "temp_seasonality", "annual_precipitation")
+plot(bio_worlclim)
 ```
 
-Read it back in.
+#### Predictor 2: Elevation ####
+We will now download elevation data *near our sites* using elevatr.
+
 ```{r}
-ba <- vect("path to your formatted shapefile .shp")
+aoi_II <- st_transform(aoi, 4326)
+
+elev_raw <- elevatr::get_elev_raster(
+  locations = aoi_II,
+  z=8,
+  clip="bbox"
+)
+
+elev <- terra::rast(elev_raw)
+names(elev) <- "elevation_m"
 ```
 
-In this chunk, load raster data for our predictor variables using terra and format to make keep the rasters consistent.
+#### Predictor 3: Slope ####
+Calculate slope from the elevation
+
 ```{r}
-# Load raster data using terra
-temperature_raster <- rast("temperature raster .tif")
-NDVI_raster <- rast("NDVI raster .tif")
-NDVI_raster <- resample(NDVI_raster, temperature_raster) #format to make sure it's like the first raster
-ET_raster <- rast("ET raster.tif")
-ET_raster <- resample(ET_raster, temperature_raster)
-rainfall_raster <- rast("rainfall raster.tif")
-rainfall_raster <- resample(rainfall_raster, temperature_raster)
+slope <-  terra::terrain(
+  elev,
+  v="slope",
+  unit = "degrees" # units are degrees b/c we are in 4326
+)
+
+names(slope) <- "slope_deg"
 ```
 
-Crop the raster layers to the extent of the shapefile (shape and size).
+Plot each predictor:
+
 ```{r}
-# crop the rasters so that they are all the same shape and size
-temperature_raster_crop <- crop(temperature_raster, ba)
-NDVI_raster_crop <- crop(NDVI_raster, ba)
-ET_raster_crop <- crop(ET_reprojected, ba)
-rainfall_raster_crop <- crop(rainfall_raster, ba)
+bio_worlclim <- bio_worlclim %>%
+  crop(vect(aoi_II)) %>%
+  mask(vect(aoi_II))
+
+
+# plots each map for each bio predictor
+plot(bio_worlclim[[1]])
+plot(st_geometry(sites_sf), add=TRUE)
+
+plot(bio_worlclim[[2]])
+plot(st_geometry(sites_sf), add=TRUE)
+
+plot(bio_worlclim[[3]])
+plot(st_geometry(sites_sf), add=TRUE)
+
+plot(bio_worlclim[[4]])
+plot(st_geometry(sites_sf), add=TRUE)
+
+
+plot(elev) # shows the elevation of the study area (e.g. mountains)
+plot(st_geometry(sites_sf), add=TRUE)
+
+plot(slope)
+plot(st_geometry(sites_sf), add=TRUE, col="white")
 ```
 
+Based on these plots, which predictor seems to vary the most across the studdy area?
+
+
+### Formatting Our Predictors ###
+
+Because spatial predictors can have different resolutions, projections, and extents, it is important that we get them all to match our response variable projection before we extract any values. This allows us to compare apples to apples instead of apples to oranges. 
+
+Make a template of our response variable projection in raster format:
+
+```{r}
+template <- rast(
+  ext(vect(aoi)),
+  resolution = 1000,
+  crs = crs_model
+)
+```
+
+Project climate and elevation predictors using this template.
+
+```{r}
+bio_model <- project(bio_worlclim, template, method="bilinear")
+elev_model <- project(elev, template, method="bilinear")
+slope_model <- project(slope, template, method="bilinear")
+
+```
+
+Now combine the predictors into a raster stack by creating a vector of the above models. Name the object "predictor_stack"
+```{r}
+predictor_stack <- c(bio_model, elev_model, slope_model)
+```
+
+### Extracting Site-Level Predictors ###
+
+We will now extract the raster values to the associate sites.
+
+```{r}
+site_predictors <- terra::extract(
+  predictor_stack,
+  vect(sites_proj)
+)%>%
+  as_tibble()%>%
+  mutate(site_id = sites_clean$site_id)%>%
+  select(site_id, everything(), -ID)
+
+#Inspect the results
+```
+
+### Create Final Tables to Use when Modeling ###
+
+Using left_join() create a dataframe that combines your predictor variable values with the site-level density data and another dataframe that combines your predictor variable values with the visit-level data.
+
+```{r}
+site_level <- sites_clean %>%
+  left_join(site_predictors, by="site_id")
+
+glimpse(site_level)
+```
+
+```{r}
+visit_level <- visits_clean %>%
+  left_join(site_level, by="site_id") %>%
+  left_join(site_predictors, by="site_id")
+
+glimpse(visit_level)
+```
+
+**Why might visit-level data be better or worse for modeling than the site level average density data? How would you do this process for a dataframe that contains a unique row for each tick collected in the field? How might sample-level data be better or worse for modeling than visit or site-level data?**
+
+Visit-level data might be worse since there are less visits to some sites, because the data might become biased.
+
+###Additional questions ###
+
+1. Why is count not the same thing as density?
+
+Density is the count divided by the area. This is important because the data distribution is going to look different in a count-based model vs a density-based model and for determining what is an appropriate model for your data or model geometry.
+
+2. What would happen if one site had twice as much area surveyed as another site but we ignored survey area?
+
+If one site has twice as much area survey as another site but we ignored the survey area, we would bias our data, making some counts look inflated and others deflated.
+
+3. Why might repeated visits help us understand variation better than a single visit?
+
+
+
+4. What is one reason climate might affect the response variable? Elevation? Slope?
+
+Ticks like certain levels of humidity and temperature to sustain their population/transform between life stages, so climate can affect the timing in which they molt.
+
+Elevation could affect the species communities in an area, oxygen/CO2 availibility, humidity levels, etc that can all affect tick populations.
+
+Slope could affect tick populations based on the species community able to utilize that area, and it could affect the samplers' ability to conduct a thorough tick drag.
+
+
+### Challenge ###
+
+1. Try to fit simple site and visit-level models. Either lm, glm, glmmtmb.
+
+```{r}
+visit_level %>%
+  lm(formula = don ~ annual_mean_temp.x) %>%
+  summary()
+# if summary() shows that the signif. code is not *, then you are missing a predictor variable that could further explain the variation in the response variable, don
+
+# the following code, you can see the correlation between x and y
+# this can be used for other variables to see what correlates with our response variable
+ggplot(data=visit_level, aes(x=annual_mean_temp.x, y=don)) +
+  geom_point() +
+  geom_smooth(method=lm)
+```
+
+y = mx + b
+
+
+2. Try to standardize the numeric predictors of our resulting site-level and visit-level dataframes that incorporate our predictors. Then refit the models.

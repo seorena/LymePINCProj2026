@@ -1,0 +1,93 @@
+---
+title: "ModelBuilding_Predictors_Prism"
+author: "Jadyn Zapata"
+date: "2026-07-01"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Set-up
+
+This is practice for creating a model and building predictors. This model will use a map from the prism package.
+
+#### Installing packages
+```{r install-packages}
+# Remove the comment on this code if this package is not downloaded on your device
+#install.packages("prism", "gdalUtilities", "raster", "ggplot2", "dplyr", "sp")
+```
+
+#### Loading packages
+```{r library}
+library(prism)
+library(gdalUtilities)
+library(raster)
+library(ggplot2)
+library(dplyr)
+library(sp)
+```
+
+##### Define geographic area
+
+This information was taken from the original Model Building Predictors file.
+
+The geographical area where the study took place is defined with the following variables:
+```{r coordinates}
+lon_min <- -123.3
+lon_max <- -121.8
+lat_min <- 37.05
+lat_max <- 38.6
+```
+
+The study area is defined as:
+```{r area}
+area <- c(lat_min, lat_max, lon_min, lon_max)
+```
+
+#### Setting the temporal extent of the study
+
+The response variable data was collected March 2026 - June 2026. However, this may be too recent of a timeframe, and the package used to retrieve map data may not have been updated for this time.
+
+```{r}
+# Set the date range
+start <- "2026-03-01"  # yr-mo-d
+end <- "2026-06-25"
+```
+
+#### Downloading prism data and preparing it for analysis
+
+This section will go into how to retrieve prism data with guidance from the README for prism on the CRAN r-project website and by also following along from the original Model Building Predictors file.
+
+#### Retrieving mean temperature ####
+
+The variable that will be retrieved for this file is tmean, the mean temperature.
+
+First, we need to set the download directory.
+```{r}
+# This sets the prism archive
+prism_set_dl_dir("C:/Users/jadyn/OneDrive/Desktop/R-PINC-LYME PROJECT/LymePINCProj2026/data")
+```
+
+Downloading the daily tmean will take too long. Instead, we will download the monthly mean temperatures based on the start and end dates, variables that were initialized earlier.
+```{r}
+get_prism_monthlys(
+  type = "tmean",
+  years = 2026,
+  mon = c(3, 4, 5, 6),
+  resolution = "4km",
+  keepZip = FALSE
+)
+```
+
+Turn the prism files into a raster object.
+```{r}
+mean_temp_raster <- pd_stack(prism_archive_ls())
+```
+
+Save your raster object as a tif file
+```{r}
+# Make sure the file is saved to the correct location
+writeRaster(mean_temp_raster, filename = "mean_temp_prism.tif", format = "GTiff", overwrite = TRUE)
+```
