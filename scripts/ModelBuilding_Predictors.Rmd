@@ -531,6 +531,7 @@ library(terra)
 library(osmdata)
 library(FedData)
 ```
+If this line of code returns zero rows, your site IDs match!
 
 ---
 
@@ -548,6 +549,9 @@ focal_species <- "__________"
 
 Example format:
 
+### Site-Level Density Data ###
+
+Summarize the two visits to consider site-level density (we might consider each drag effort at each site as independent observations, but we need to understand it summarized to know what's best for our analysis).
 ```{r}
 focal_species <- "Panthera leo"
 ```
