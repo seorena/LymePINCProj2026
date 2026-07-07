@@ -1,0 +1,17 @@
+site_id,site,longitude,latitude,area_sureveyed_m2,puma_factor
+SLP,Spring Lake Regional Park,-122.646643,38.452213,900,Low
+HMRP,Hood Mountain Regional Park,-122.569362,38.479855,1000,Medium
+PWP,Pepperwood,-122.690823,38.576738,1000,High
+BDM,Black Diamond Mines,-121.87216,37.950735,1000,Low
+PR2,Pleasanton Ridge,-121.93827,37.658508,1000,Medium
+LTW,Las Trampas Wilderness,-122.042797,37.83718,1000,High
+SPC,Chinacamp,-122.49708,38.008322,1000,Low
+BLSU,Blithedale Summit,-122.547347,37.925412,1000,Medium
+MMWD,Marin Water District,-122.656974,37.991493,1000,High
+SKY,Skyline Ridge ,-122.188212,37.311839,1000,Low
+EWV,Edgewood,-122.28043,37.47059,1000,Medium
+BSP,Butano State Park,-122.329524,37.199499,600,High
+AISP,Angel Island State Park,-122.431689,37.864454,1000,Absent
+SAN,Sanborn County Park,-122.092023,37.236837,1000,Low
+RCDO,Rancho Canada del Oro,-121.775948,37.140482,1000,Medium
+UVA,Uvas Canyon County Park,-121.797257,37.080172,300,High

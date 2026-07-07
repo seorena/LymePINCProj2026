@@ -33,6 +33,7 @@ install.packages(c( "tidyverse", "janitor", "lubridate", "sf", "terra", "geodata
 The chunk above is used to install packages hosted on CRAN directly. For packages that need to be sourced directly from GitHub repository, install them with the code as follows:
 ```{r}
 remotes::install_github("rspatial/luna")
+library(luna)
 ```
 
 ####Load packages
@@ -82,17 +83,25 @@ As with all scripts, the first thing we need to do to setup our workspace is ins
 Once you've loaded all relevant packages, you will want to import and take a look at the response data we will be working with today. Associated csv files are available in our shared drive: [Sites](https://drive.google.com/file/d/1sY2M3p13s2IY3jzU-Ctou5wNXWAq_hzK/view?usp=drive_link) & [Visits](https://drive.google.com/file/d/1Wg3GkkfqWnNzLsNGCW9DZLAG2xE1Ysze/view?usp=drive_link).
 
 ```{r}
-sites_raw <- read_csv("path to your file.csv")
-visits_raw <- read_csv("path to you file.csv")
+getwd()
+
+sites_raw <- read_csv("./data/Puma_data - Sites_Puma.csv")
+visits_raw <- read_csv("./data/Puma_data - Visits_Puma_Counts.csv")
 ```
 
 ##### Inspect the data #####
 
 ```{r}
+glimpse(sites_raw)
+glimpse(visits_raw)
+
+summary(sites_raw)
+summary(visits_raw)
 
 ```
 
 **How are the site-level and visit-level tables different? Why might be need both?**
+The site-level table keeps track of information associated with the study site that is doesn't change with each visit. The visit-level table include information about our response variable collections at each site on different dates. 
 
 ### Data Cleaning ###
 Data cleaning allows us to perform checks on our data. Is the dataset accurate and usable for analysis? Raw data often contains errors, including but not limited to missing values, incorrect formats, duplicates, or inconsistent entries. These errors can give us a hard time down the line.
@@ -117,7 +126,32 @@ between(lat, -90, 90)
 distinct(site_id, .keep_all=TRUE)
 
 
-#visits_clean <- visits_raw %>% ...
+visits_clean <- visits_raw %>%
+  mutate(
+    site_id = as.character(site_id),
+    site = as.character(site),
+    drag_num = as.integer(drag_num),
+    collection_date = mdy(collection_date),
+    collection_factor = as.factor(collection_factor),
+    observer_count = as.integer(observer_count),
+    area_surveyed_m2 = as.numeric(area_sureveyed_m2),
+    puma_factor = as.factor(puma_factor),
+    count_IPAC_L = as.integer(count_IPAC_L),
+    count_IPAC_N = as.integer(count_IPAC_N),
+    count_IPAC_A_F = as.integer(count_IPAC_A_F),
+    count_IPAC_A_M = as.integer(count_IPAC_A_M),
+    dol = count_IPAC_L / area_sureveyed_m2,
+    don = count_IPAC_N / area_sureveyed_m2,
+    doaf = count_IPAC_A_F / area_sureveyed_m2,
+    doam = count_IPAC_A_M / area_sureveyed_m2
+  )%>%
+    filter(
+      !is.na(site_id),
+    )
+
+
+glimpse(sites_clean)
+glimpse(visits_clean)
 
 #for visits_clean also add a column for density of nymphs called "don." Which count column should you use?
 ```
@@ -130,9 +164,14 @@ anti_join(visits_clean, sites_clean, by="site_id")
 If this line of code returns zero rows, your site IDs match!
 
 
-Using the chunk below, create a table showing how many visits each site has and answer the following question: Do all sites have the same number of visits? If not, which sites are missing visits?
+Using the chunk below, create a table showing how many visits each site has and answer the following question: **Do all sites have the same number of visits? If not, which sites are missing visits?**
 
 ```{r}
+
+count_visits <- visits_clean %>%
+  count(site_id)
+
+print(count_visits)
 
 ```
 
@@ -142,27 +181,35 @@ Using the chunk below, create a table showing how many visits each site has and 
 Summarize the two visits to consider site-level density (we might consider each drag effort at each site as independent observations, but we need to understand it summarized to know what's best for our analysis).
 ```{r}
 
-site_don <- visits %>%
+site_don <- visits_clean %>%
   group_by(site_id)%>%
   summarise(
     n_visits = n(),
     total_nymphs = sum(count_IPAC_N, na.rm = TRUE),
     total_area_surveyed_m2 = sum(area_sureveyed_m2, na.rm=TRUE),
     pooled_density = total_nymphs / total_area_surveyed_m2,
-    density_100m2 = pooled_density * 100,
-    mean_visit_density = mean(DON_100m2, na.rm=TRUE),
-    sd_visit_density = sd(DON_100m2, na.rm=TRUE),
+    pooled_density_100m2 = pooled_density * 100,
+    mean_visit_density = mean(don, na.rm=TRUE),
+    mean_visit_density_100m2 = mean_visit_density * 100,
+    sd_visit_density = sd(don, na.rm=TRUE),
     .groups = "drop"
   )
 
+glimpse(site_don)
+summary(site_don)
 ```
 
 Use a left_join to incorporate site coordinates into our density data and inspect the result.
 ```{r}
+site_don <- site_don %>%
+  left_join(sites_clean, by = "site_id")
 
+glimpse(site_don)
 ```
 
-Do you notice a difference between pooled_density and mean_visit_density? When are they different?
+
+**Do you notice a difference between pooled_density and mean_visit_density? When are they different?**
+pooled_density and mean_visit_density are different when the total area surveyed per site visit is different.
 
 
 ### Converting our Sites into Spatial Objects ###
@@ -171,21 +218,23 @@ In the chunk below, convert the sites to an sf object named "sites_sf" using st_
 
 ```{r}
 
-sites_sf <- st_as_sf(df, #update with your df 
+sites_sf <- st_as_sf(site_don, #update with your df 
                      coords= c("lon", "lat"), #vector for your coordinates
                      crs = 4326, remove=FALSE)
 
 ```
 
-EPSG:4326 is a spherical model of earth represented in decimal degrees. We are going to want to convert our spatial object into a coordinate system measured in meters for our analysis. We will be using EPSG:3857.
+EPSG:4326 is a spherical model of earth represented in decimal degrees. We are going to want to convert our spatial object into a coordinate system measured in meters for our analysis. We will be using EPSG:3310.
 
 **Why is it useful to use a projected coordinate system in meters rather than latitude/longitude?**
+Easier to do calculations in the metric system.
 
 Define an object as "crs_model" with the value "EPSG:3310" and reproject sites_sf using st_transform()
 ```{r}
-#crs_model <-
+crs_model <- "EPSG:3310"
 
-#sites_proj <- 
+?st_transform
+sites_proj <- st_transform(sites_sf, crs = crs_model)
 
 ```
 
@@ -197,9 +246,10 @@ aoi <- sites_proj %>%
   st_union()%>%
   st_buffer(50000)%>%
   st_as_sf()
+
 ```
 
-This creates a 50 km buffer around our sites. Does this seem like an appropriate buffer for our study? If not, adjust accordingly.
+This creates a 8 km buffer around our sites. Does this seem like an appropriate buffer for our study? If not, adjust accordingly.
 
 
 ### Loading Predictors using APIs ###
@@ -213,6 +263,7 @@ WorldClim is a database of global weather and climate data. They have datasets t
 When we load these datasets, we are going to save them in a new folder within the data foloder of our project.
 
 ```{r}
+
 dir.create("data/predictors/worldclim", recursive=TRUE, showWarnings = FALSE)
 ```
 
@@ -231,19 +282,25 @@ We are going to keep four climate predictors.
 ```{r}
 bio_worlclim <- bio[[c(1, 2, 4, 12)]]
 names(bio_worlclim) <- c("annual_mean_temp", "mean_diurnal_range", "temp_seasonality", "annual_precipitation")
+plot(bio_worlclim)
 ```
 
 #### Predictor 2: Elevation ####
 We will now download elevation data *near our sites* using elevatr.
 
 ```{r}
-aoi_II <- st_triangulate(aoi, 4326)
+
+aoi_II <- st_transform(aoi, 4326)
 
 elev_raw <- elevatr::get_elev_raster(
-  locations = aoi_II,
-  z=8,
+  locations = sites_sf,
+  z=12,
+  src="aws",
   clip="bbox"
 )
+
+
+elev_point <-elevatr::get_elev_point(sites_sf, prj = 4326)
 
 elev <- terra::rast(elev_raw)
 names(elev) <- "elevation_m"
@@ -253,6 +310,7 @@ names(elev) <- "elevation_m"
 Calculate slope from the elevation
 
 ```{r}
+
 slope <-  terra::terrain(
   elev,
   v="slope",
@@ -265,7 +323,29 @@ names(slope) <- "slope_deg"
 Plot each predictor:
 
 ```{r}
+bio_worlclim <- bio_worlclim%>%
+  crop(vect(aoi_II))%>%
+  mask(vect(aoi_II))
 
+
+plot(bio_worlclim[[1]])
+plot(st_geometry(sites_sf), add=TRUE)
+
+plot(bio_worlclim[[2]])
+plot(st_geometry(sites_sf), add=TRUE)
+
+plot(bio_worlclim[[3]])
+plot(st_geometry(sites_sf), add=TRUE)
+
+plot(bio_worlclim[[4]])
+plot(st_geometry(sites_sf), add=TRUE)
+
+plot(elev)
+plot(st_geometry(sites_sf), add=TRUE)
+plot(slope)
+plot(st_geometry(sites_sf), add=TRUE, col = "white")
+
+summary(bio_worlclim)
 ```
 
 Based on these plots, which predictor seems to vary the most across the studdy area?
@@ -289,14 +369,15 @@ Project climate and elevation predictors using this template.
 
 ```{r}
 bio_model <- project(bio_worlclim, template, method="bilinear")
-#elev_model <-
-#slope_model <-
+elev_model <- project(elev, template, method= "bilinear")
+slope_model <- project(slope, template, method="bilinear")
+elev_usgs <- elev_point$elevation
 
 ```
 
 Now combine the predictors into a raster stack by creating a vector of the above models. Name the object "predictor_stack"
 ```{r}
-
+predictor_stack <- c(bio_model, elev_model, slope_model)
 ```
 
 ### Extracting Site-Level Predictors ###
@@ -320,11 +401,19 @@ site_predictors <- terra::extract(
 Using left_join() create a dataframe that combines your predictor variable values with the site-level density data and another dataframe that combines your predictor variable values with the visit-level data.
 
 ```{r}
-#site_level
+site_level <- sites_clean%>%
+  left_join(site_predictors, by="site_id")%>%
+  select(everything(), -latitude, -longitude)
+
+site_level$elevation_m <- elev_point$elevation
+
+glimpse(site_level)
 ```
 
 ```{r}
-#visit_level
+visit_level <- visits_clean%>%
+  left_join(site_level, by=c("site_id", "site", "area_sureveyed_m2", "puma_factor"))
+glimpse(visit_level)
 ```
 
 **Why might visit-level data be better or worse for modeling than the site level average density data? How would you do this process for a dataframe that contains a unique row for each tick collected in the field? How might sample-level data be better or worse for modeling than visit or site-level data?**
@@ -333,11 +422,1158 @@ Using left_join() create a dataframe that combines your predictor variable value
 ###Additional questions ###
 
 1. Why is count not the same thing as density?
+Density is count divided by area, so it's the number of nymphs per unit area. This is important for determine what is an appropriate model for your data or model geometry based on the data distribution.
+
 2. What would happen if one site had twice as much area surveyed as another site but we ignored survey area?
+If one site has twice as much area survey as another site but we ignored the survey area, we would bias our data, making some counts look inflated and others deflated.
+
 3. Why might repeated visits help us understand variation better than a single visit?
+
+
 4. What is one reason climate might affect the response variable? Elevation? Slope?
+
+Climate could affect the timing of ticks molt, because they need certain temperature ranges and humidity levels to sustain their populations/transform between life stages.
+
+Elevation could affect the species communities in an area, oxygen /CO2 availability, humidity levels, etc that can all affect tick populations.
+
+Slope could affect tick populations based on the species community able to utiliZe the area. AND it could affect samplers ability to conduct a thorough tick drag.
 
 ### Challenge ###
 
-1. Try to fit simple site and visit-level models. Either lm or glm.
+1. Try to fit simple site and visit-level models. Either lm, glm, glmmtmb.
+
+```{r}
+lm(don ~ annual_mean_temp, data=visit_level)
+summary(lm(don ~ annual_mean_temp, data=visit_level))
+
+
+ggplot(data=visit_level, aes(x=annual_mean_temp, y=don))+
+  geom_point()+
+  geom_smooth(method=lm)
+```
+y = mx + b
+
+
+
 2. Try to standardize the numeric predictors of our resulting site-level and visit-level dataframes that incorporate our predictors. Then refit the models.
+
+
+## Ecological Predictor Variable in R continued
+
+### Goal
+
+You will add additional ecological predictor variables to your site and visit-level modeling tables.
+
+Tasks
+
+1. Identify reliable open-access datasets for ecological modeling.
+2. Pull species information from the IUCN Red List.
+3. Download road and water features from OpenStreetMap.
+4. Calculate distance to roads and water.
+5. Calculate road density near each site.
+6. Perform manual checks to confirm that your spatial calculations make sense.
+7. Add soil moisture data.
+8. Add vegetation cover.
+9. Calculate vegetated patch area.
+
+This lab builds directly from what you worked on last Thursday.
+
+---
+
+## Starting objects from Lab 1
+
+Before starting, you should already have:
+```{r}
+sites_clean
+visits_clean
+sites_sf
+sites_proj
+aoi
+aoi_ll
+crs_model
+template
+```
+
+You should also have a site-level or visit-level modeling table:
+```{r}
+site_level
+
+visit_level
+```
+---
+
+#### Install and load additional packages
+
+Install packages if needed:
+
+```{r}
+install.packages(c(
+  "tidyverse",
+  "janitor",
+  "lubridate",
+  "sf",
+  "terra",
+  "osmdata",
+  "FedData",
+  "rredlist",
+  "smapr"
+))
+```
+
+Load packages:
+
+```{r}
+library(tidyverse)
+library(janitor)
+library(lubridate)
+library(sf)
+library(terra)
+library(osmdata)
+library(FedData)
+```
+
+---
+
+# Pull species data from IUCN
+
+The IUCN Red List is a major global source for conservation status, habitat, population trend, threats, and conservation action information. The `rredlist` R package connects to the IUCN Red List API, but you need an IUCN API key to use it. The current `rredlist` package supports IUCN Red List API version 4, requires authentication, and does **not** include spatial range map support; IUCN range-map spatial data must be downloaded separately from the IUCN website. We will use range-map data that can be found in the folder for this week on GOogle Drive
+
+## Student input section
+
+Fill in your focal species.
+
+```{r}
+focal_species <- "__________"
+```
+
+Example format:
+
+```{r}
+focal_species <- "Panthera leo"
+```
+
+#### Load your data
+
+Unzip the .zip file by running:
+```{r}
+dir.create(".data/species/iucn_unzipped", recursive= TRUE, showWarnings = FALSE)
+
+unzip(zipfile = "Path to your file.zip",
+      exdir=".data.species/iucn_unzipped")
+
+```
+Then load the polygon layer
+```{r}
+iucn_terrestrial_raw <- st_read("data/species/iucn_unzipped/FILENAME.shp")
+```
+
+This stores your key locally.
+
+#### Inspect your data
+
+```{r}
+glimpse(iucn_terrestrial_raw)
+name(iucn_terrestrial_raw)
+st_crs(iucn_terrestrial_raw)
+plot(st_geometry(iucn_range_raw))
+```
+
+#### Write the name of your focal species
+Idenitfy where you can find species-names in your data set and how the names are formated
+
+```{r}
+focal_species <- "ADD ANIMAL OF INTEREST HERE"
+```
+
+Filter for the species.
+
+```{r}
+iucn__range_species <- iucn_species_raw %>%
+  filter(NAME_OF_COLUMN == focal_species)
+```
+
+Inspect:
+
+```{r}
+nrow(iucn_range_species)
+plot(st_geometry(iucn_range_species))
+```
+
+---
+
+##### Manual check: Species name - did nrow(iucn_range_species) come back as 0? If yes, the focal_species name does not match.
+
+Answer:
+
+1. Did IUCN return the species you intended?
+2. Are there synonyms or multiple records?
+3. Is the taxonomic name spelled correctly?
+4. What is the Red List category, if available?
+5. What is the population trend, if available?
+
+---
+
+#### Projecting IUCN Polygon
+
+```{r}
+iucn_range <- iucn_range_species %>%
+  st_make_valid()%>%
+  st_transform(crs_model)
+
+#check that the crs matches our site data using st_crs() on both spatial object
+
+
+```
+
+Crop the layer to thea study area only
+```{r}
+iucn_range_aoi <- suppressWarnings(st_intersection(iucn_range, aoi))
+
+#depending on CRS used change aoi to aoi_II
+```
+
+Check the cropped area
+
+```{r}
+nrow(iucn_range_aoi) 
+plot(st_geometry(aoi), border = "black") 
+plot(st_geometry(iucn_range_aoi), add = TRUE, col = "lightgreen", border = "darkgreen") 
+plot(st_geometry(sites_proj), add = TRUE, pch = 21, bg = "red")
+```
+
+Determine if each site is inside IUCN range. Returns binary result if the study site falls within the range or not
+```{r}
+sites_in_range <- st_intersects(sites_proj, iucn_range_aoi, sparse = FALSE)
+
+site_range_table <- tibble(
+  site_id = sites_clean$site_id,
+  inside_iucn_range = apply(sites_in_range, 1, any)
+)
+
+site_range_table
+```
+
+Calculate distance to the range for sites outside of the species range.
+```{r}
+iucn_union <- st_union(iucn_range_aoi)
+
+dist_to_iucn_range_m <- st_distance(
+  sites_proj,
+  iucn_union
+)
+
+site_iucn_distance <- tibble(
+  site_id = sites_clean$site_id,
+  dist_to_iucn_range_m = as.numeric(dist_to_iucn_range_m)
+)
+
+site_iucn_distance <- site_iucn_distance %>%
+  mutate(
+    dist_to_iucn_range_m = ifelse(
+      site_iucn_table$inside_iucn_range,
+      0,
+      dist_to_iucn_range_m
+    )
+  )
+
+site_iucn_distance
+
+#Join the distance to the IUCN table:
+
+site_range_table <- site_range_table %>%
+  left_join(site_iucn_distance, by = "site_id")
+```
+
+
+Join to your model table:
+
+```{r}
+site_level <- site_level %>%
+  left_join(site_range_table, by = "site_id")
+
+visit_level <- visit_level %>%
+  left_join(site_range_table, by = "site_id")
+```
+
+---
+
+#####Questions
+
+Which sites are inside the IUCN range?
+Which sites are farthest from the IUCN range?
+Are any sites outside the range? If yes, does that make biological sense?
+
+Answer:
+
+
+---
+
+### Download roads from OpenStreetMap
+
+OpenStreetMap can be accessed through the `osmdata` package, which sends queries to the Overpass API and returns data as `sf` objects. The package is intended for small-to-medium OSM queries; for large areas, pre-downloaded extracts or other bulk-data tools are more appropriate.
+
+Choose road classes to include.
+
+```{r}
+road_classes <- c(
+  "__________",
+  "__________",
+  "__________",
+  "__________"
+)
+```
+
+Suggested values:
+
+```{r}
+road_classes <- c(
+  "motorway",
+  "trunk",
+  "primary",
+  "secondary",
+  "tertiary",
+  "residential",
+  "service"
+)
+```
+
+#### Create a bounding box
+
+```{r}
+bb <- st_bbox(aoi_II)
+bb
+```
+
+#### Query roads
+
+```{r}
+roads_query <- opq(bb) %>%
+  add_osm_feature(
+    key = "highway",
+    value = road_classes
+  )
+
+roads_osm <- osmdata_sf(roads_query)
+
+roads_raw <- roads_osm$osm_lines
+```
+
+Check what you got:
+
+```{r}
+glimpse(roads_raw)
+nrow(roads_raw)
+```
+
+##Project and clip roads to the AOI
+
+```{r}
+roads_proj <- roads_raw %>%
+  st_transform(crs_model) %>%
+  st_make_valid() %>%
+  st_intersection(aoi)
+```
+
+Plot:
+```{r}
+plot(st_geometry(aoi), border = "black")
+plot(st_geometry(roads_proj), add = TRUE, col = "gray40")
+plot(st_geometry(sites_proj), add = TRUE, pch = 21, bg = "red")
+```
+
+
+Try plotting with ggplot2 or ggmap
+```{r}
+
+```
+
+---
+
+#### Questions
+
+Answer:
+
+1. Do roads appear in the correct place?
+2. Are your sites located near the expected road network?
+3. Did you accidentally include trails, footpaths, or service roads that are not relevant?
+4. Does the number of road features seem reasonable?
+
+---
+
+## Calculate distance to nearest road
+
+### Find nearest road for each site
+
+```{r}
+nearest_road_id <- st_nearest_feature(sites_proj, roads_proj)
+```
+
+### Calculate distance in meters
+
+```{r}
+dist_to_road_m <- st_distance(
+  sites_proj,
+  roads_proj[nearest_road_id, ],
+  by_element = TRUE
+)
+
+road_distance_table <- tibble(
+  site_id = sites_clean$site_id,
+  dist_to_road_m = as.numeric(dist_to_road_m)
+)
+
+road_distance_table
+```
+
+### Join to model tables
+
+```{r}
+site_level <- site_model_df %>%
+  left_join(road_distance_table, by = "site_id")
+
+visit_level <- visit_model_df %>%
+  left_join(road_distance_table, by = "site_id")
+```
+
+---
+
+### Nearest-road line
+
+Pick one site to check manually.
+
+```{r}
+check_site <- "__________"
+```
+
+Example:
+
+```{r}
+check_site <- sites_clean$site_id[1]
+```
+
+Plot the nearest road line.
+
+```{r}
+site_one <- sites_proj %>%
+  filter(site_id == check_site)
+
+nearest_one <- roads_proj[
+  st_nearest_feature(site_one, roads_proj),
+]
+
+nearest_line <- st_nearest_points(site_one, nearest_one)
+
+plot(st_geometry(aoi), border = "black")
+plot(st_geometry(roads_proj), add = TRUE, col = "gray70")
+plot(st_geometry(site_one), add = TRUE, pch = 21, bg = "red", cex = 1.5)
+plot(st_geometry(nearest_one), add = TRUE, col = "blue", lwd = 2)
+plot(st_geometry(nearest_line), add = TRUE, col = "orange", lwd = 2)
+```
+
+Question:
+
+Does the orange line visually connect the site to the nearest road?
+
+
+### Calculate road density near each site
+
+Road density is often more informative than distance to road because it describes the intensity of human development around a site.
+
+We will calculate:
+
+road density = road length inside buffer / buffer area
+
+Choose a buffer distance in meters.
+
+```{r}
+#road_buffer_m <- 
+```
+
+Suggested value:
+
+```{r}
+road_buffer_m <- 1000
+```
+
+#### Create buffers
+
+```{r}
+road_buffers <- sites_proj %>%
+  st_buffer(road_buffer_m) %>%
+  mutate(buffer_area_km2 = as.numeric(st_area(.) / 1e6))
+```
+
+#### Clip roads to each buffer
+
+```{r}
+roads_in_buffers <- st_intersection(
+  roads_proj,
+  road_buffers %>% select(site_id, buffer_area_km2)
+)
+```
+
+#### Calculate road length and density
+
+```{r}
+road_density_table <- roads_in_buffers %>%
+  mutate(road_length_km = as.numeric(st_length(geometry)) / 1000) %>%
+  st_drop_geometry() %>%
+  group_by(site_id) %>%
+  summarise(
+    road_length_km_1km = sum(road_length_km, na.rm = TRUE),
+    road_density_km_per_km2 = road_length_km_1km / first(buffer_area_km2),
+    .groups = "drop"
+  )
+```
+
+Some sites may have zero roads inside the buffer. Add those back:
+
+```{r}
+road_density_table <- sites_clean %>%
+  select(site_id) %>%
+  left_join(road_density_table, by = "site_id") %>%
+  mutate(
+    road_length_km_1km = replace_na(road_length_km_1km, 0),
+    road_density_km_per_km2 = replace_na(road_density_km_per_km2, 0)
+  )
+
+road_density_table
+```
+
+#### Join to model tables
+
+```{r}
+
+```
+
+---
+
+#### Look at Road density
+
+Create a histogram.
+
+```{r}
+hist(road_density_table$road_density_km_per_km2)
+summary(road_density_table$road_density_km_per_km2)
+```
+
+Question:
+
+Which sites have the highest road density? Does this make sense looking at GoogleEarth or Maps?
+
+```{r}
+road_density_table %>%
+  arrange(desc(road_density_km_per_km2)) %>%
+  slice_head(n = 5)
+```
+
+---
+
+## Download water features and calculate distance to water
+
+Water can be represented by streams, rivers, lakes, ponds, reservoirs, wetlands, or coastlines. Your choice should match your organism and ecological question.
+
+## Student input section
+
+Choose the water features that matter for your species.
+
+```{r}
+water_feature_type <- "__________"
+```
+
+
+####Streams and rivers from OSM
+
+```{r}
+waterway_query <- opq(bb) %>%
+  add_osm_feature(key = "waterway")
+
+water_osm <- osmdata_sf(waterway_query)
+
+water_lines_raw <- water_osm$osm_lines
+```
+
+Project and clip:
+
+```{r}
+water_lines_proj <- water_lines_raw %>%
+  st_transform(crs_model) %>%
+  st_make_valid() %>%
+  st_intersection(aoi)
+```
+
+Plot:
+
+```{r}
+plot(st_geometry(aoi), border = "black")
+plot(st_geometry(water_lines_proj), add = TRUE, col = "blue")
+plot(st_geometry(sites_proj), add = TRUE, pch = 21, bg = "red")
+```
+
+## Lakes and ponds from OSM
+
+```{r}
+water_poly_query <- opq(bb) %>%
+  add_osm_feature(key = "natural", value = "water")
+
+water_poly_osm <- osmdata_sf(water_poly_query)
+
+water_polys_raw <- water_poly_osm$osm_polygons
+```
+
+Project and clip:
+
+```{r}
+water_polys_proj <- water_polys_raw %>%
+  st_transform(crs_model) %>%
+  st_make_valid() %>%
+  st_intersection(aoi)
+```
+
+Plot:
+
+```{r}
+plot(st_geometry(aoi), border = "black")
+plot(st_geometry(water_polys_proj), add = TRUE, col = "lightblue", border = "blue")
+plot(st_geometry(sites_proj), add = TRUE, pch = 21, bg = "red")
+```
+
+---
+
+### Calculate distance to streams/rivers
+
+```{r}
+nearest_water_id <- st_nearest_feature(sites_proj, water_lines_proj)
+
+dist_to_water_m <- st_distance(
+  sites_proj,
+  water_lines_proj[nearest_water_id, ],
+  by_element = TRUE
+)
+
+water_distance_table <- tibble(
+  site_id = sites_clean$site_id,
+  dist_to_water_m = as.numeric(dist_to_water_m)
+)
+
+water_distance_table
+```
+
+####Join to model tables
+
+```{r}
+
+```
+
+## Check Distance to water
+
+```{r}
+summary(water_distance_table$dist_to_water_m)
+
+water_distance_table %>%
+  arrange(dist_to_water_m) %>%
+  slice_head(n = 5)
+
+water_distance_table %>%
+  arrange(desc(dist_to_water_m)) %>%
+  slice_head(n = 5)
+```
+
+Question:
+
+Do the closest and farthest sites make ecological sense?
+
+
+## Soil moisture data
+
+Soil moisture can be useful for plants, amphibians, invertebrates, microbes, fungi, wetlands, fire ecology, and drought-sensitive species.
+
+NASA SMAP products include surface soil moisture, root-zone soil moisture, freeze/thaw status, surface temperature, vegetation water content, soil temperature, and evapotranspiration. 
+
+---
+
+## Download Nasa SMAP data
+
+We will work on downloading SMAP data directly from Nasa Earth Data and uploading the raster file here.
+
+1. Visit (National Snow and Ice Data Center)[https://nsidc.org/data/smap/data]
+2. Take a look at the data available. Read through the descriptions and select the data product whose temporal coverage and parameters seems the most applicable to our study
+3. Download the data and save it to your project files.
+
+```{r}
+#You might have to rewrite the path to your data
+soil_moisture <- rast("data/predictors/soil_moisture.tif")
+
+soil_moisture <- project(
+  soil_moisture,
+  template,
+  method = "bilinear"
+)
+
+names(soil_moisture) <- "soil_moisture"
+```
+
+Plot:
+
+```{r}
+plot(soil_moisture)
+plot(st_geometry(sites_proj), add = TRUE, pch = 21, bg = "red")
+```
+
+Extract:
+
+```{r}
+soil_moisture_table <- terra::extract(
+  soil_moisture,
+  vect(sites_proj)
+) %>%
+  as_tibble() %>%
+  mutate(site_id = sites_clean$site_id) %>%
+  select(site_id, soil_moisture)
+
+soil_moisture_table
+```
+
+Join to model tables:
+```{r}
+
+```
+
+---
+
+### Take a look at your output soil moisture 
+
+```{r}
+summary(soil_moisture_table)
+hist(soil_moisture_table$rootzone_soil_moisture)
+```
+
+Question:
+
+Do values fall in a plausible range? Are there missing values?
+
+---
+
+## Vegetation cover using NLCD
+
+For U.S. sites, NLCD is a useful land-cover source. `FedData::get_nlcd()` can download land cover, impervious surface, and canopy products cropped to a study area. NLCD tree canopy cover is a 30-meter geospatial dataset produced by the USDA Forest Service.
+
+For this lab, we will use NLCD land cover to classify vegetated cells.
+
+## Download NLCD land cover
+
+```{r}
+nlcd <- FedData::get_nlcd(
+  template = aoi,
+  label = "lab2_nlcd",
+  year = 2019,
+  dataset = "landcover"
+)
+
+nlcd_model <- project(
+  nlcd,
+  template,
+  method = "near"
+)
+
+names(nlcd_model) <- "nlcd_landcover"
+```
+
+Plot:
+
+```{r}
+plot(nlcd_model)
+plot(st_geometry(sites_proj), add = TRUE, pch = 21, bg = "red")
+```
+
+---
+
+## Student input section
+
+Choose which NLCD classes count as vegetation for the ecological question.
+
+Suggested “natural vegetation” classes:
+
+```{r}
+veg_classes <- c(41, 42, 43, 52, 71, 90, 95)
+```
+
+Student choice:
+
+```{r}
+veg_classes <- c(__________)
+```
+
+Useful NLCD classes:
+
+41 = deciduous forest
+42 = evergreen forest
+43 = mixed forest
+52 = shrub/scrub
+71 = grassland/herbaceous
+81 = pasture/hay
+82 = cultivated crops
+90 = woody wetlands
+95 = emergent herbaceous wetlands
+
+Should agriculture should count as vegetation for the project?
+
+---
+
+### Create a binary vegetation raster
+
+```{r}
+veg_binary <- ifel(
+  nlcd_model %in% veg_classes,
+  1,
+  0
+)
+
+names(veg_binary) <- "vegetated"
+```
+
+Plot:
+
+```{r}
+plot(veg_binary)
+plot(st_geometry(sites_proj), add = TRUE, pch = 21, bg = "red")
+```
+
+---
+
+###Calculate vegetation cover within buffers
+
+Choose a buffer distance.
+
+```{r}
+#veg_buffer_m <- 
+```
+
+Suggested:
+
+```{r}
+veg_buffer_m <- 1000
+```
+
+Create buffers:
+
+```{r}
+veg_buffers <- sites_proj %>%
+  st_buffer(veg_buffer_m)
+```
+
+Extract mean vegetation value. Since the raster is 0/1, the mean equals proportion vegetated.
+
+```{r}
+veg_cover_table <- terra::extract(
+  veg_binary,
+  vect(veg_buffers),
+  fun = mean,
+  na.rm = TRUE
+) %>%
+  as_tibble() %>%
+  mutate(site_id = sites_clean$site_id) %>%
+  transmute(
+    site_id,
+    veg_cover_1km = vegetated
+  )
+
+veg_cover_table
+```
+
+Join:
+
+```{r}
+
+```
+
+---
+
+#### Check vegetation cover outputs
+
+```{r}
+summary(veg_cover_table$veg_cover_1km)
+hist(veg_cover_table$veg_cover_1km)
+```
+
+Plot highest and lowest vegetation-cover sites:
+
+```{r}
+veg_cover_table %>%
+  arrange(desc(veg_cover_1km)) %>%
+  slice_head(n = 5)
+
+veg_cover_table %>%
+  arrange(veg_cover_1km) %>%
+  slice_head(n = 5)
+```
+
+## Vegetated patch area
+
+Patch area measures the size of the connected vegetated patch associated with a site.
+
+For example, two sites may both have 70% vegetation within 1 km, but one may be inside a single large connected habitat patch while the other is surrounded by many small fragments.
+
+### Create vegetated-only raster
+
+```{r}
+veg_only <- ifel(veg_binary == 1, 1, NA)
+```
+
+### Identify connected vegetation patches
+
+```{r}
+veg_patches <- terra::patches(
+  veg_only,
+  directions = 8
+)
+
+names(veg_patches) <- "patch_id"
+```
+
+Plot:
+
+```{r}
+plot(veg_patches)
+plot(st_geometry(sites_proj), add = TRUE, pch = 21, bg = "red")
+```
+
+### Calculate area of each patch
+
+```{r}
+cell_area <- terra::cellSize(
+  veg_patches,
+  unit = "m"
+)
+
+patch_area_table <- terra::zonal(
+  cell_area,
+  veg_patches,
+  fun = "sum",
+  na.rm = TRUE
+) %>%
+  as_tibble()
+
+names(patch_area_table) <- c("patch_id", "patch_area_m2")
+
+patch_area_table <- patch_area_table %>%
+  mutate(
+    patch_area_ha = patch_area_m2 / 10000
+  )
+
+patch_area_table
+```
+
+### Extract patch ID at each site
+
+```{r}
+site_patch_id <- terra::extract(
+  veg_patches,
+  vect(sites_proj)
+) %>%
+  as_tibble() %>%
+  mutate(site_id = sites_clean$site_id) %>%
+  transmute(
+    site_id,
+    patch_id = patch_id
+  )
+```
+
+### Join patch area to sites
+
+```{r}
+site_patch_area <- site_patch_id %>%
+  left_join(patch_area_table, by = "patch_id")
+
+site_patch_area
+```
+
+Join to site and visit level tables:
+
+```{r}
+
+```
+
+---
+
+#### Check patch area output
+```{r}
+summary(site_patch_area$patch_area_ha)
+
+site_patch_area %>%
+  arrange(desc(patch_area_ha)) %>%
+  slice_head(n = 5)
+```
+
+Question:
+
+What does `NA` patch area mean?
+
+Hint: It usually means the point itself is not located on a vegetated pixel, even if vegetation exists nearby.
+
+---
+
+## Percent canopy cover
+
+Instead of binary land cover, you can use percent tree canopy cover.
+
+```{r}
+canopy <- FedData::get_nlcd(
+  template = aoi,
+  label = "lab2_canopy",
+  year = 2019,
+  dataset = "canopy"
+)
+
+canopy_model <- project(
+  canopy,
+  template,
+  method = "bilinear"
+)
+
+names(canopy_model) <- "tree_canopy_pct"
+```
+
+Extract mean canopy within buffers:
+
+```{r}
+canopy_cover_table <- terra::extract(
+  canopy_model,
+  vect(veg_buffers),
+  fun = mean,
+  na.rm = TRUE
+) %>%
+  as_tibble() %>%
+  mutate(site_id = sites_clean$site_id) %>%
+  transmute(
+    site_id,
+    tree_canopy_pct_1km = tree_canopy_pct
+  )
+
+canopy_cover_table
+```
+
+Join:
+
+```{r}
+
+```
+
+Is binary land cover or percent canopy cover more useful for our study? Should we include both? Why or why not?
+---
+
+## Build the final advanced predictor table
+
+Create a compact predictor table with the new variables.
+
+```{r}
+advanced_predictors <- sites_clean %>%
+  select(site_id) %>%
+  left_join(road_distance_table, by = "site_id") %>%
+  left_join(road_density_table, by = "site_id") %>%
+  left_join(water_distance_table, by = "site_id") %>%
+  left_join(soil_moisture_table, by = "site_id") %>%
+  left_join(veg_cover_table, by = "site_id") %>%
+  left_join(site_patch_area, by = "site_id")
+```
+
+Inspect:
+
+```{r}
+glimpse(advanced_predictors)
+summary(advanced_predictors)
+```
+
+Join to your visit-level model table:
+
+```{r}
+visit_model_df_advanced <- visits_clean %>%
+  left_join(site_predictors, by = "site_id") %>%
+  left_join(advanced_predictors, by = "site_id") %>%
+  left_join(sites_clean, by = "site_id")
+```
+
+
+## Final quality control checklist
+
+Before modeling, check these.
+
+## CRS checks
+
+```{r}
+st_crs(sites_proj)
+st_crs(roads_proj)
+st_crs(water_lines_proj)
+crs(nlcd_model)
+crs(veg_binary)
+```
+
+All should match your modeling CRS.
+
+## Missing values
+
+```{r}
+advanced_predictors %>%
+  summarise(across(everything(), ~ mean(is.na(.)))) %>%
+  pivot_longer(
+    everything(),
+    names_to = "variable",
+    values_to = "prop_missing"
+  ) %>%
+  arrange(desc(prop_missing))
+```
+
+## Range checks
+
+```{r}
+summary(advanced_predictors$dist_to_road_m)
+summary(advanced_predictors$dist_to_water_m)
+summary(advanced_predictors$road_density_km_per_km2)
+summary(advanced_predictors$veg_cover_1km)
+summary(advanced_predictors$patch_area_ha)
+```
+
+## Map checks
+
+```{r}
+plot(st_geometry(aoi), border = "black")
+plot(st_geometry(roads_proj), add = TRUE, col = "gray60")
+plot(st_geometry(water_lines_proj), add = TRUE, col = "blue")
+plot(st_geometry(sites_proj), add = TRUE, pch = 21, bg = "red")
+```
+
+---
+
+## Reliable dataset search guide
+
+When looking for ecological predictor datasets online, prioritize datasets that have:
+
+1. A clear institutional source.
+2. Metadata.
+3. Spatial resolution.
+4. Temporal coverage.
+5. Citation instructions.
+6. Licensing terms.
+7. Data dictionary.
+8. Known limitations.
+9. Version number or release date.
+10. Compatibility with your study area and time period.
+
+## Reliable sources to search first
+
+| Dataset source                    | Useful for                                                      |
+| --------------------------------- | --------------------------------------------------------------- |
+| IUCN Red List                     | species conservation status, threats, habitat, population trend |
+| GBIF                              | species occurrence data                                         |
+| DataONE                           | ecological and environmental datasets                           |
+| NEON                              | standardized U.S. ecological field and sensor data              |
+| NASA Earthdata / AppEEARS         | remote sensing, climate, vegetation, soil moisture              |
+| USGS / MRLC / NLCD                | U.S. land cover, impervious surface, tree canopy                |
+| USDA / NRCS                       | soils                                                           |
+| NOAA                              | climate, coastal, marine, weather                               |
+| OpenStreetMap                     | roads, buildings, trails, waterways                             |
+| Microsoft Planetary Computer STAC | cloud-hosted geospatial raster data                             |
+| State GIS portals                 | roads, parcels, water, land use, protected areas                |
+
+DataONE provides access to Earth and environmental data across member repositories. NEON’s `neonUtilities` package helps discover, download, and reformat NEON data. The `rgbif` package supports GBIF occurrence-data workflows, and GBIF recommends `occ_download()` for research-scale occurrence downloads. Microsoft Planetary Computer provides a catalog of cloud-hosted environmental monitoring datasets.
+
